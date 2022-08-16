@@ -1,0 +1,304 @@
+version: '3'
+services:
+  eureka:
+    build: ./service-discovery/
+    container_name: eureka
+    ports:
+      - "8761:8761"
+    networks:
+      - application-backend-network
+
+  ed-gateway:
+    build: ./gateway/
+    container_name: ed-gateway
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./gateway/.env
+    networks:
+      - application-backend-network
+
+  demo-service:
+    build: ./demo/
+    container_name: demo-service
+    ports:
+      - "5510:5510"
+    env_file:
+      - ./demo/.env
+    networks:
+      - application-backend-network
+    depends_on:
+      - ed-gateway
+      - kafka-broker1
+
+  patient-service:
+    build: ./patient-management/
+    container_name: patient-service
+    ports:
+      - "5501:5501"
+    networks:
+      - application-backend-network
+    depends_on:
+      - postgres-patient-db
+      - ed-gateway
+      - kafka-broker1
+
+  doctor-service:
+    build: ./doctor-management/
+    container_name: doctor-service
+    ports:
+      - "5502:5502"
+    networks:
+      - application-backend-network
+    depends_on:
+      - postgres-doctor-db
+      - ed-gateway
+      - kafka-broker1
+
+  diagnosis-service:
+    build: ./diagnosis/
+    container_name: diagnosis-service
+    ports:
+      - "5503:5503"
+    networks:
+      - application-backend-network
+    depends_on:
+      - postgres-diagnosis-db
+      - ed-gateway
+      - kafka-broker1
+
+  feedback-service:
+    build: ./feedbacks/
+    container_name: feedback-service
+    ports:
+      - "5504:5504"
+    networks:
+      - application-backend-network
+    depends_on:
+      - postgres-feedback-db
+      - ed-gateway
+      - kafka-broker1
+
+  postgres-patient-db:
+    image: postgres:12.3-alpine
+    container_name: patient-db
+    environment:
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=patient_db
+    ports:
+      # don't expose ports in production
+      - "5551:5432"
+    networks:
+      - application-backend-network
+    volumes:
+      - ./database/Patient.sql:/docker-entrypoint-initdb.d/init.sql  # file name in docker container should also be changed right?
+      - ./database/initOutboxSettings.sh:/docker-entrypoint-initdb.d/init.sh
+
+  postgres-doctor-db:
+    image: postgres:12.3-alpine
+    container_name: doctor-db
+    environment:
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=doctor_db
+    ports:
+      # don't expose ports in production
+      - "5552:5432" # not sure which port should I change or no need to change
+    networks:
+      - application-backend-network
+    volumes:
+      - ./database/Doctor.sql:/docker-entrypoint-initdb.d/init.sql # file name in docker container should also be changed right?
+      - ./database/initOutboxSettings.sh:/docker-entrypoint-initdb.d/init.sh
+
+  postgres-diagnosis-db:
+    image: postgres:12.3-alpine
+    container_name: diagnosis-db
+    environment:
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=diagnosis_db
+    ports:
+      # don't expose ports in production
+      - "5553:5432"
+    networks:
+      - application-backend-network
+    volumes:
+      - ./database/Diagnosis.sql:/docker-entrypoint-initdb.d/init.sql # file name in docker container should also be changed right?
+      - ./database/initOutboxSettings.sh:/docker-entrypoint-initdb.d/init.sh
+
+  postgres-feedback-db:
+    image: postgres:12.3-alpine
+    container_name: feedback-db
+    environment:
+      - POSTGRES_DB=feedback_db
+      - POSTGRES_PASSWORD=root
+    ports:
+      # don't expose ports in production
+      - "5554:5432" # not sure which port should I change or no need to change
+    networks:
+      - application-backend-network
+    volumes:
+      - ./database/Feedback.sql:/docker-entrypoint-initdb.d/init.sql # file name in docker container should also be changed right?
+      - ./database/initOutboxSettings.sh:/docker-entrypoint-initdb.d/init.sh
+
+  zookeeper:
+    image: 'bitnami/zookeeper:latest'
+    hostname: zookeeper
+    container_name: zookeeper
+    ports:
+      - '2181:2181'
+    environment:
+      - ZOO_SERVER_ID=1
+      - ZOO_PORT_NUMBER=2181
+      - ZOO_SERVERS=server.1=zookeeper:2888:3888
+      - ZOO_4LW_COMMANDS_WHITELIST=dump, srvr, mntr
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    networks:
+      - application-backend-network
+
+  kafka-broker1:
+    image: 'bitnami/kafka:latest'
+    hostname: kafka-broker1
+    container_name: kafka-broker1
+    ports:
+      - '9092:9092'
+    environment:
+      - KAFKA_CFG_ADVERTISED_LISTENERS=INTERNAL://kafka-broker1:19092,EXTERNAL://kafka-broker1:9092
+      - KAFKA_CFG_LISTENERS=INTERNAL://kafka-broker1:19092,EXTERNAL://kafka-broker1:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_BROKER_ID=1
+      - KAFKA_TOPIC
+    networks:
+      - application-backend-network
+    depends_on:
+      - zookeeper
+
+  kafka-broker2:
+    image: 'bitnami/kafka:latest'
+    hostname: kafka-broker2
+    container_name: kafka-broker2
+    ports:
+      - '9093:9093'
+    environment:
+      - KAFKA_CFG_ADVERTISED_LISTENERS=INTERNAL://kafka-broker2:19093,EXTERNAL://kafka-broker2:9093
+      - KAFKA_CFG_LISTENERS=INTERNAL://kafka-broker2:19093,EXTERNAL://kafka-broker2:9093
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_BROKER_ID=2
+    networks:
+      - application-backend-network
+    depends_on:
+      - zookeeper
+
+  kafka-setup:
+    image: confluentinc/cp-kafka:5.2.7
+    hostname: kafka-setup
+    container_name: kafka-setup
+    command: "bash -c 'echo Waiting for Kafka to be ready... && \
+              cub kafka-ready -b kafka-broker1:9092 2 20 && \
+              kafka-topics --create --if-not-exists --zookeeper zookeeper:2181 --partitions 3 --replication-factor 2 --topic patient && \
+              kafka-topics --create --if-not-exists --zookeeper zookeeper:2181 --partitions 3 --replication-factor 2 --topic doctor && \
+              kafka-topics --create --if-not-exists --zookeeper zookeeper:2181 --partitions 3 --replication-factor 2 --topic guidance && \
+              echo Waiting 60 seconds for Connect to be ready... && \
+              sleep 60 && \
+              curl -i -X POST -H Accept:application/json -H Content-Type:application/json http://patient-connect:8083/connectors/ -d @/opt/docker/connectors/connector_patient.config && \
+              curl -i -X POST -H Accept:application/json -H Content-Type:application/json http://doctor-connect:8083/connectors/ -d @/opt/docker/connectors/connector_doctor.config && \
+              curl -i -X POST -H Accept:application/json -H Content-Type:application/json http://diagnosis-connect:8083/connectors/ -d @/opt/docker/connectors/connector_diagnosis.config && \
+              curl -i -X POST -H Accept:application/json -H Content-Type:application/json http://feedback-connect:8083/connectors/ -d @/opt/docker/connectors/connector_feedback.config'"
+    environment:
+      # The following settings are listed here only to satisfy the image's requirements.
+      # We override the image's `command` anyways, hence this container will not start a broker.
+      KAFKA_BROKER_ID: ignored
+      KAFKA_ZOOKEEPER_CONNECT: ignored
+    volumes:
+      - ./DebeziumTransformer/connector_patient.config:/opt/docker/connectors/connector_patient.config
+      - ./DebeziumTransformer/connector_doctor.config:/opt/docker/connectors/connector_doctor.config
+      - ./DebeziumTransformer/connector_diagnosis.config:/opt/docker/connectors/connector_diagnosis.config
+      - ./DebeziumTransformer/connector_feedback.config:/opt/docker/connectors/connector_feedback.config
+    networks:
+      - application-backend-network
+    depends_on:
+      - kafka-broker1
+
+  patient-connect:
+    build: ./DebeziumTransformer/
+    container_name: patient-connect
+    hostname: patient-connect
+    ports:
+      - '8100:8083'
+    environment:
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: patient_connect_config
+      OFFSET_STORAGE_TOPIC: patient_connect_offsets
+      STATUS_STORAGE_TOPIC: patient_connect_status
+      BOOTSTRAP_SERVERS: kafka-broker1:9092
+      ZOOKEEPER_CONNECTION: zookeeper:2181
+    networks:
+      - application-backend-network
+    depends_on:
+      - kafka-broker1
+      - postgres-patient-db
+
+  doctor-connect:
+    build: ./DebeziumTransformer/
+    container_name: doctor-connect
+    hostname: doctor-connect
+    ports:
+      - '8101:8083'
+    environment:
+      GROUP_ID: 2
+      CONFIG_STORAGE_TOPIC: doctor_connect_config
+      OFFSET_STORAGE_TOPIC: doctor_connect_offsets
+      STATUS_STORAGE_TOPIC: doctor_connect_status
+      BOOTSTRAP_SERVERS: kafka-broker1:9092
+      ZOOKEEPER_CONNECTION: zookeeper:2181
+    networks:
+      - application-backend-network
+    depends_on:
+      - kafka-broker1
+      - postgres-doctor-db
+
+  diagnosis-connect:
+    build: ./DebeziumTransformer/
+    container_name: diagnosis-connect
+    hostname: diagnosis-connect
+    ports:
+      - '8102:8083'
+    environment:
+      GROUP_ID: 3
+      CONFIG_STORAGE_TOPIC: diagnosis_connect_config
+      OFFSET_STORAGE_TOPIC: diagnosis_connect_offsets
+      STATUS_STORAGE_TOPIC: diagnosis_connect_status
+      BOOTSTRAP_SERVERS: kafka-broker1:9092
+      ZOOKEEPER_CONNECTION: zookeeper:2181
+    networks:
+      - application-backend-network
+    depends_on:
+      - kafka-broker1
+      - postgres-diagnosis-db
+
+  feedback-connect:
+    build: ./DebeziumTransformer/
+    container_name: feedback-connect
+    hostname: feedback-connect
+    ports:
+      - '8103:8083'
+    environment:
+      GROUP_ID: 4
+      CONFIG_STORAGE_TOPIC: feedback_connect_config
+      OFFSET_STORAGE_TOPIC: feedback_connect_offsets
+      STATUS_STORAGE_TOPIC: feedback_connect_status
+      BOOTSTRAP_SERVERS: kafka-broker1:9092
+      ZOOKEEPER_CONNECTION: zookeeper:2181
+    networks:
+      - application-backend-network
+    depends_on:
+      - kafka-broker1
+      - postgres-feedback-db
+
+networks:
+  application-backend-network:
+    driver: bridge

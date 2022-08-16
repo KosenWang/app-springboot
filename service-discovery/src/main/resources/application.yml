@@ -1,0 +1,9 @@
+server:
+  port: 8761
+
+# eureka
+eureka:
+  client:
+    # otherwise, eureka registers itself
+    registerWithEureka: false
+    fetchRegistry: false
